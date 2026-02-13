@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Comparativo: Corolla 2008 vs BYD Dolphin GS</title>
+  <meta name="description" content="Simulador financeiro: Corolla 2008 vs BYD Dolphin GS"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:#060d1b;font-family:'SF Pro Display','Segoe UI',-apple-system,sans-serif}
+    input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;background:#1a2744;border-radius:4px;outline:none}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;background:#3b82f6;border-radius:50%;cursor:pointer;border:2px solid #7dd3fc}
+    input[type=range]::-moz-range-thumb{width:18px;height:18px;background:#3b82f6;border-radius:50%;cursor:pointer;border:2px solid #7dd3fc}
+    input[type=checkbox]{accent-color:#22c55e;width:16px;height:16px}
+    table{width:100%;border-collapse:collapse}
+    ::-webkit-scrollbar{height:4px}::-webkit-scrollbar-thumb{background:#1a2744;border-radius:4px}
+    button{cursor:pointer;border:none;font-family:inherit}
+    button:active{transform:scale(0.97)}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback}=React;
+
+const App=()=>{
+  const[gasPrice,setGasPrice]=useState(6.33);
+  const[elecPrice,setElecPrice]=useState(1.00);
+  const[dailyKm,setDailyKm]=useState(50);
+  const[corollaKmL,setCorollaKmL]=useState(10);
+  const[dolphinKmKwh,setDolphinKmKwh]=useState(8.26);
+  const[cdiNet,setCdiNet]=useState(10.15);
+  const[dolphinIPVAExempt,setDolphinIPVAExempt]=useState(true);
+  const[copied,setCopied]=useState(false);
+  const[showShare,setShowShare]=useState(false);
+
+  // Lê parâmetros da URL (?param=valor OU #param=valor)
+  useEffect(()=>{
+    try{
+      const raw=window.location.search.slice(1)||window.location.hash.slice(1);
+      if(!raw)return;
+      const p=new URLSearchParams(raw);
+      if(p.get("km"))setDailyKm(Number(p.get("km")));
+      if(p.get("gas"))setGasPrice(Number(p.get("gas")));
+      if(p.get("energia"))setElecPrice(Number(p.get("energia")));
+      if(p.get("cdi"))setCdiNet(Number(p.get("cdi")));
+      if(p.get("consumo_c"))setCorollaKmL(Number(p.get("consumo_c")));
+      if(p.get("consumo_d"))setDolphinKmKwh(Number(p.get("consumo_d")));
+      if(p.has("ipva"))setDolphinIPVAExempt(p.get("ipva")==="1");
+    }catch(e){}
+  },[]);
+
+  const generateShareUrl=useCallback(()=>{
+    const params=new URLSearchParams({
+      km:dailyKm,gas:gasPrice.toFixed(2),energia:elecPrice.toFixed(2),
+      cdi:cdiNet.toFixed(2),consumo_c:corollaKmL.toFixed(1),
+      consumo_d:dolphinKmKwh.toFixed(2),ipva:dolphinIPVAExempt?"1":"0",
+    });
+    const base=window.location.origin+window.location.pathname.replace(/\/$/,"");
+    return base+"?"+params.toString();
+  },[dailyKm,gasPrice,elecPrice,cdiNet,corollaKmL,dolphinKmKwh,dolphinIPVAExempt]);
+
+  const handleCopy=async()=>{
+    try{await navigator.clipboard.writeText(generateShareUrl())}
+    catch{const t=document.createElement("textarea");t.value=generateShareUrl();document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t)}
+    setCopied(true);setTimeout(()=>setCopied(false),2500);
+  };
+
+  // === CONSTANTS ===
+  const CV=50000,CASH=80000,DP=130000,IR_M=130,DM=30,MY=12;
+  const CM=3500,DM2=1200,IPVAR=0.04;
+
+  // === CALCULATIONS ===
+  const cDL=dailyKm/corollaKmL, cDC=cDL*gasPrice, cMF=cDC*DM, cYF=cMF*MY, cKm=gasPrice/corollaKmL;
+  const dDK=dailyKm/dolphinKmKwh, dDC=dDK*elecPrice, dME=dDC*DM, dYE=dME*MY, dKm=elecPrice/dolphinKmKwh;
+  const fSY=cYF-dYE, irSY=IR_M*MY;
+
+  const cDR=[0,-0.02,-0.02,-0.02,-0.01,-0.01];
+  const dDR=[0,-0.10,-0.08,-0.07,-0.06,-0.05];
+  const dep=(init,r)=>{const v=[init];for(let i=1;i<r.length;i++)v.push(Math.round(v[i-1]*(1+r[i])));return v};
+  const cVals=dep(CV,cDR), dVals=dep(DP,dDR);
+
+  const analysis=(()=>{
+    const yrs=[];let inv=CASH,cum=0;
+    for(let y=1;y<=5;y++){
+      inv*=(1+cdiNet/100);
+      const ipva=dolphinIPVAExempt?0:(dVals[y-1]*IPVAR);
+      cum+=fSY+(CM-DM2)+irSY-ipva;
+      const cdl=CV-cVals[y],ddl=DP-dVals[y],ndd=ddl-cdl,oc=inv-CASH;
+      yrs.push({y,cum,cV:cVals[y],dV:dVals[y],cdl,ddl,ndd,inv:Math.round(inv),oc:Math.round(oc),net:Math.round(cum-ndd-oc)});
+    }return yrs;
+  })();
+
+  const fmt=v=>v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const fK=v=>`R$ ${(v/1000).toFixed(1)}k`;
+  const beY=analysis.find(a=>a.net>0);
+  const fN=analysis[4]?.net||0;
+  const totalOpY=fSY+(CM-DM2)+irSY+(dolphinIPVAExempt?0:-(DP*IPVAR));
+
+  // === COMPONENTS ===
+  const Sec=({title,icon,children})=>(
+    <div style={{background:"#0c1222",borderRadius:16,padding:"20px 18px",marginBottom:18,border:"1px solid #1a2744",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
+      <h3 style={{margin:"0 0 16px",fontSize:15,color:"#7dd3fc",fontWeight:700,letterSpacing:"-0.02em",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:18}}>{icon}</span>{title}
+      </h3>{children}
+    </div>
+  );
+
+  const SC=({label,value,color,small})=>(
+    <div style={{background:"#111b30",borderRadius:10,padding:small?10:14,textAlign:"center",flex:1,minWidth:0,border:"1px solid #1a2744"}}>
+      <div style={{fontSize:10,color:"#6b7f9e",marginBottom:3,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</div>
+      <div style={{fontSize:small?16:22,fontWeight:800,color:color||"#e2e8f0",lineHeight:1.2}}>{value}</div>
+    </div>
+  );
+
+  const Bar=({value,max,color})=>{
+    const pct=Math.min(Math.abs(value)/Math.abs(max)*100,100);
+    return(
+      <div style={{width:"100%",background:"#111b30",borderRadius:6,height:26,overflow:"hidden"}}>
+        <div style={{width:`${pct}%`,background:`linear-gradient(90deg,${color}88,${color})`,height:"100%",borderRadius:6,
+          display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8,
+          fontSize:11,fontWeight:700,color:"#fff",minWidth:55,transition:"width 0.6s cubic-bezier(0.4,0,0.2,1)"}}>
+          {fmt(value)}
+        </div>
+      </div>
+    );
+  };
+
+  const CR=({label,corolla,dolphin})=>{
+    const mx=Math.max(Math.abs(corolla),Math.abs(dolphin));
+    return(
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:11,color:"#6b7f9e",marginBottom:5}}>{label}</div>
+        <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+          <span style={{width:52,fontSize:10,color:"#ff6b6b",fontWeight:700}}>Corolla</span>
+          <Bar value={corolla} max={mx} color="#ef4444"/>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <span style={{width:52,fontSize:10,color:"#4ade80",fontWeight:700}}>Dolphin</span>
+          <Bar value={dolphin} max={mx} color="#22c55e"/>
+        </div>
+      </div>
+    );
+  };
+
+  const Slider=({label,value,onChange,min,max,step,unit})=>(
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#6b7f9e",marginBottom:3}}>
+        <span>{label}</span>
+        <span style={{color:"#e2e8f0",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>
+          {step<1?value.toFixed(2):value} {unit}
+        </span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))}/>
+    </div>
+  );
+
+  // === RENDER ===
+  return(
+    <div style={{background:"linear-gradient(180deg,#060d1b,#0a1628)",color:"#d1dae8",minHeight:"100vh",padding:"20px 10px"}}>
+      <div style={{maxWidth:660,margin:"0 auto"}}>
+
+        {/* HEADER */}
+        <div style={{textAlign:"center",marginBottom:6,padding:"16px 0 8px"}}>
+          <div style={{fontSize:11,color:"#3b5998",textTransform:"uppercase",letterSpacing:"0.15em",fontWeight:700,marginBottom:6}}>Simulador Financeiro</div>
+          <h1 style={{fontSize:24,fontWeight:800,margin:"0 0 4px",letterSpacing:"-0.03em",
+            background:"linear-gradient(135deg,#ff6b6b,#7dd3fc,#4ade80)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            Corolla SEG 2008 vs BYD Dolphin GS
+          </h1>
+          <p style={{fontSize:12,color:"#3d5278",margin:0}}>Análise completa com depreciação, custo de oportunidade e economia operacional</p>
+        </div>
+
+        {/* SHARE */}
+        <div style={{display:"flex",justifyContent:"center",marginBottom:18,gap:8}}>
+          <button onClick={()=>setShowShare(!showShare)} style={{
+            background:"linear-gradient(135deg,#1e40af,#3b82f6)",color:"#fff",borderRadius:10,padding:"10px 20px",
+            fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8,boxShadow:"0 4px 16px rgba(59,130,246,0.3)"}}>
+            🔗 Compartilhar Simulação
+          </button>
+        </div>
+
+        {showShare&&(
+          <div style={{background:"#111b30",borderRadius:14,padding:16,marginBottom:18,border:"1px solid #1e40af",boxShadow:"0 8px 32px rgba(30,64,175,0.2)"}}>
+            <div style={{fontSize:12,color:"#7dd3fc",fontWeight:600,marginBottom:8}}>📋 Link com seus parâmetros atuais:</div>
+            <div style={{background:"#060d1b",borderRadius:8,padding:10,fontSize:11,color:"#6b7f9e",wordBreak:"break-all",lineHeight:1.6,border:"1px solid #1a2744",marginBottom:10}}>
+              {generateShareUrl()}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleCopy} style={{
+                background:copied?"#166534":"#1e40af",color:"#fff",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,flex:1,transition:"all 0.3s"}}>
+                {copied?"✅ Copiado!":"📋 Copiar Link"}
+              </button>
+              <button onClick={()=>setShowShare(false)} style={{background:"#1a2744",color:"#6b7f9e",border:"1px solid #2a3f5f",borderRadius:8,padding:"8px 16px",fontSize:12}}>
+                Fechar
+              </button>
+            </div>
+            <div style={{fontSize:10,color:"#3d5278",marginTop:8,lineHeight:1.6}}>
+              💡 Quem abrir este link verá o simulador com os mesmos valores que você configurou.
+            </div>
+          </div>
+        )}
+
+        {/* CENÁRIO */}
+        <Sec title="Cenário da Operação" icon="🎯">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{background:"#111b30",borderRadius:12,padding:14,borderLeft:"3px solid #ef4444"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#ff6b6b",marginBottom:6}}>Toyota Corolla SEG 2008</div>
+              <div style={{fontSize:11,color:"#6b7f9e",lineHeight:2}}>
+                Valor: <b style={{color:"#d1dae8"}}>{fmt(CV)}</b><br/>
+                IPVA: <b style={{color:"#4ade80"}}>Isento</b> (2008)<br/>
+                Consumo: {corollaKmL} km/l<br/>
+                Estável há 3 anos
+              </div>
+            </div>
+            <div style={{background:"#111b30",borderRadius:12,padding:14,borderLeft:"3px solid #22c55e"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#4ade80",marginBottom:6}}>BYD Dolphin GS (Semi)</div>
+              <div style={{fontSize:11,color:"#6b7f9e",lineHeight:2}}>
+                Preço: <b style={{color:"#d1dae8"}}>{fmt(DP)}</b><br/>
+                = {fK(CV)} + {fK(CASH)} (bolso)<br/>
+                Consumo: {dolphinKmKwh} km/kWh<br/>
+                Autonomia: ~291 km
+              </div>
+            </div>
+          </div>
+          <div style={{background:"#0d1f3c",borderRadius:10,padding:10,marginTop:10,fontSize:11,color:"#7dd3fc",border:"1px solid #1e3a5f"}}>
+            💡 <b>Auxílio combustível:</b> Com o Dolphin você recebe o auxílio sem tributação → economia de <b>{fmt(IR_M)}/mês</b> ({fmt(irSY)}/ano) em IR.
+          </div>
+        </Sec>
+
+        {/* PARÂMETROS */}
+        <Sec title="Ajuste os Parâmetros" icon="⚙️">
+          <Slider label="Km rodados por dia" value={dailyKm} onChange={setDailyKm} min={10} max={200} step={5} unit="km"/>
+          <Slider label="Preço da gasolina" value={gasPrice} onChange={setGasPrice} min={5} max={9} step={0.01} unit="R$/l"/>
+          <Slider label="Tarifa de energia" value={elecPrice} onChange={setElecPrice} min={0.4} max={1.5} step={0.01} unit="R$/kWh"/>
+          <Slider label="CDI líquido (após IR)" value={cdiNet} onChange={setCdiNet} min={5} max={15} step={0.05} unit="% a.a."/>
+          <Slider label="Consumo Corolla" value={corollaKmL} onChange={setCorollaKmL} min={6} max={16} step={0.5} unit="km/l"/>
+          <Slider label="Consumo Dolphin" value={dolphinKmKwh} onChange={setDolphinKmKwh} min={5} max={12} step={0.1} unit="km/kWh"/>
+          <label style={{fontSize:12,color:"#6b7f9e",display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginTop:4}}>
+            <input type="checkbox" checked={dolphinIPVAExempt} onChange={e=>setDolphinIPVAExempt(e.target.checked)}/>
+            IPVA do Dolphin isento no seu estado?
+          </label>
+        </Sec>
+
+        {/* COMBUSTÍVEL */}
+        <Sec title="Custos com Combustível / Energia" icon="⛽">
+          <CR label={`Custo diário (${dailyKm} km)`} corolla={cDC} dolphin={dDC}/>
+          <CR label="Custo mensal" corolla={cMF} dolphin={dME}/>
+          <CR label="Custo anual" corolla={cYF} dolphin={dYE}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:12}}>
+            <SC label="R$/km Corolla" value={`R$ ${cKm.toFixed(2)}`} color="#ff6b6b" small/>
+            <SC label="R$/km Dolphin" value={`R$ ${dKm.toFixed(2)}`} color="#4ade80" small/>
+            <SC label="Vezes mais barato" value={`${(cKm/dKm).toFixed(1)}x`} color="#7dd3fc" small/>
+          </div>
+          <div style={{background:"linear-gradient(135deg,#052e16,#0c1222)",borderRadius:12,padding:14,marginTop:14,textAlign:"center",border:"1px solid #16a34a30"}}>
+            <div style={{fontSize:11,color:"#6ee7b7"}}>Economia anual só em combustível → energia</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#4ade80"}}>{fmt(fSY)}</div>
+          </div>
+        </Sec>
+
+        {/* OPERACIONAL */}
+        <Sec title="Economia Operacional Anual" icon="💰">
+          {[
+            {l:"Economia combustível → energia",v:fSY,c:"#4ade80"},
+            {l:"Economia manutenção",v:CM-DM2,c:"#4ade80"},
+            {l:"Economia IR auxílio",v:irSY,c:"#4ade80"},
+            {l:"IPVA Dolphin",v:dolphinIPVAExempt?0:-(DP*IPVAR),c:dolphinIPVAExempt?"#4ade80":"#ff6b6b"},
+          ].map((it,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#111b30",borderRadius:8,padding:"9px 14px",marginBottom:6,border:"1px solid #1a2744"}}>
+              <span style={{fontSize:12,color:"#6b7f9e"}}>{it.l}</span>
+              <span style={{fontSize:14,fontWeight:700,color:it.c}}>{it.v>=0?"+":""}{fmt(it.v)}</span>
+            </div>
+          ))}
+          <div style={{background:"linear-gradient(135deg,#0c1e3d,#0c1222)",borderRadius:12,padding:14,marginTop:10,textAlign:"center",border:"1px solid #1e40af30"}}>
+            <div style={{fontSize:11,color:"#93c5fd"}}>Total economia operacional por ano</div>
+            <div style={{fontSize:28,fontWeight:800,color:"#7dd3fc"}}>{fmt(totalOpY)}</div>
+            <div style={{fontSize:11,color:"#3d5278"}}>{fmt(totalOpY/12)}/mês</div>
+          </div>
+        </Sec>
+
+        {/* DEPRECIAÇÃO */}
+        <Sec title="Projeção de Depreciação" icon="📉">
+          <div style={{fontSize:11,color:"#3d5278",marginBottom:12}}>
+            Corolla 2008: ~2%/ano (estável) | Dolphin EV seminovo: ~10%→5% a.a.
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr style={{borderBottom:"2px solid #1a2744"}}>
+                <th style={{padding:"8px 4px",textAlign:"left",color:"#3d5278",fontSize:10}}>Ano</th>
+                <th style={{padding:"8px 4px",textAlign:"center",color:"#ff6b6b",fontSize:10}}>Corolla</th>
+                <th style={{padding:"8px 4px",textAlign:"center",color:"#ff6b6b",fontSize:10}}>Perda</th>
+                <th style={{padding:"8px 4px",textAlign:"center",color:"#4ade80",fontSize:10}}>Dolphin</th>
+                <th style={{padding:"8px 4px",textAlign:"center",color:"#4ade80",fontSize:10}}>Perda</th>
+              </tr></thead>
+              <tbody>
+                <tr style={{borderBottom:"1px solid #111b30"}}>
+                  <td style={{padding:"7px 4px",color:"#6b7f9e"}}>Hoje</td>
+                  <td style={{padding:"7px 4px",textAlign:"center",fontWeight:700}}>{fK(CV)}</td>
+                  <td style={{padding:"7px 4px",textAlign:"center",color:"#3d5278"}}>—</td>
+                  <td style={{padding:"7px 4px",textAlign:"center",fontWeight:700}}>{fK(DP)}</td>
+                  <td style={{padding:"7px 4px",textAlign:"center",color:"#3d5278"}}>—</td>
+                </tr>
+                {analysis.map(a=>(
+                  <tr key={a.y} style={{borderBottom:"1px solid #111b30"}}>
+                    <td style={{padding:"7px 4px",color:"#6b7f9e",fontWeight:600}}>Ano {a.y}</td>
+                    <td style={{padding:"7px 4px",textAlign:"center",fontWeight:600,color:"#fca5a5"}}>{fK(a.cV)}</td>
+                    <td style={{padding:"7px 4px",textAlign:"center",fontSize:10,color:"#dc2626"}}>-{fK(a.cdl)}</td>
+                    <td style={{padding:"7px 4px",textAlign:"center",fontWeight:600,color:"#86efac"}}>{fK(a.dV)}</td>
+                    <td style={{padding:"7px 4px",textAlign:"center",fontSize:10,color:"#dc2626"}}>-{fK(a.ddl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{background:"#1a1a0a",borderRadius:10,padding:10,marginTop:12,fontSize:11,color:"#facc15",border:"1px solid #854d0e30"}}>
+            ⚠️ Em 5 anos: Dolphin perde ~{fK(analysis[4].ddl)} vs ~{fK(analysis[4].cdl)} do Corolla. Diferença: <b>{fK(analysis[4].ndd)}</b>.
+          </div>
+        </Sec>
+
+        {/* CUSTO OPORTUNIDADE */}
+        <Sec title="Custo de Oportunidade (R$ 80.000)" icon="📊">
+          <div style={{fontSize:11,color:"#3d5278",marginBottom:12}}>
+            Se os R$ 80k ficassem investidos a {cdiNet}% a.a. líquido:
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+            {analysis.map(a=>(
+              <div key={a.y} style={{background:"#111b30",borderRadius:10,padding:8,textAlign:"center",border:"1px solid #1a2744"}}>
+                <div style={{fontSize:10,color:"#3d5278"}}>Ano {a.y}</div>
+                <div style={{fontSize:13,fontWeight:800,color:"#facc15"}}>{fK(a.inv)}</div>
+                <div style={{fontSize:9,color:"#854d0e"}}>+{fK(a.oc)}</div>
+              </div>
+            ))}
+          </div>
+        </Sec>
+
+        {/* BALANÇO FINAL */}
+        <Sec title="Balanço Final — Projeção 5 Anos" icon="🏆">
+          <div style={{fontSize:11,color:"#3d5278",marginBottom:12}}>
+            Economia acumulada − Depreciação extra − Custo de oportunidade = <b style={{color:"#7dd3fc"}}>Saldo líquido</b>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table>
+              <thead><tr style={{borderBottom:"2px solid #1a2744"}}>
+                <th style={{padding:"8px 3px",textAlign:"left",color:"#3d5278",fontSize:10}}>Ano</th>
+                <th style={{padding:"8px 3px",textAlign:"center",color:"#4ade80",fontSize:10}}>Econ.<br/>Operac.</th>
+                <th style={{padding:"8px 3px",textAlign:"center",color:"#ff6b6b",fontSize:10}}>Deprec.<br/>Extra</th>
+                <th style={{padding:"8px 3px",textAlign:"center",color:"#facc15",fontSize:10}}>Custo<br/>Oportun.</th>
+                <th style={{padding:"8px 3px",textAlign:"center",color:"#7dd3fc",fontSize:10}}>Saldo<br/>Líquido</th>
+              </tr></thead>
+              <tbody>
+                {analysis.map(a=>(
+                  <tr key={a.y} style={{borderBottom:"1px solid #111b30"}}>
+                    <td style={{padding:"8px 3px",color:"#6b7f9e",fontWeight:700}}>Ano {a.y}</td>
+                    <td style={{padding:"8px 3px",textAlign:"center",color:"#4ade80",fontWeight:700}}>+{fK(a.cum)}</td>
+                    <td style={{padding:"8px 3px",textAlign:"center",color:"#ff6b6b",fontWeight:700}}>-{fK(a.ndd)}</td>
+                    <td style={{padding:"8px 3px",textAlign:"center",color:"#facc15",fontWeight:700}}>-{fK(a.oc)}</td>
+                    <td style={{padding:"8px 3px",textAlign:"center",fontWeight:800,fontSize:13,
+                      color:a.net>=0?"#4ade80":"#ff6b6b"}}>
+                      {a.net>=0?"+":""}{fK(a.net)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{
+            background:fN>=0?"linear-gradient(135deg,#052e16,#0c1222)":"linear-gradient(135deg,#2a0a0a,#0c1222)",
+            borderRadius:14,padding:20,marginTop:16,textAlign:"center",
+            border:`1px solid ${fN>=0?"#22c55e":"#ef4444"}30`,
+            boxShadow:`0 8px 32px ${fN>=0?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)"}`}}>
+            <div style={{fontSize:12,color:fN>=0?"#6ee7b7":"#fca5a5",marginBottom:4}}>Resultado líquido em 5 anos (considerando tudo)</div>
+            <div style={{fontSize:34,fontWeight:800,color:fN>=0?"#4ade80":"#ff6b6b",letterSpacing:"-0.02em"}}>
+              {fN>=0?"+":""}{fmt(fN)}
+            </div>
+            {beY?(
+              <div style={{fontSize:12,color:"#6ee7b7",marginTop:6}}>✅ Payback no <b>ano {beY.y}</b></div>
+            ):(
+              <div style={{fontSize:12,color:"#fca5a5",marginTop:6}}>⏳ Não atinge payback em 5 anos com estas premissas</div>
+            )}
+          </div>
+        </Sec>
+
+        {/* EQUIVALÊNCIA */}
+        <Sec title="Equivalência Prática" icon="🔄">
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+            {[
+              {i:"⛽",t:`Para rodar ${dailyKm} km no Corolla`,tx:`${cDL.toFixed(1)} litros = ${fmt(cDC)}/dia`,c:"#ff6b6b"},
+              {i:"⚡",t:`Para rodar ${dailyKm} km no Dolphin`,tx:`${dDK.toFixed(1)} kWh = ${fmt(dDC)}/dia`,c:"#4ade80"},
+              {i:"🔋",t:"Frequência de recarga",tx:`Bateria dura ~${Math.floor(291/dailyKm)} dias com ${dailyKm} km/dia`,c:"#7dd3fc"},
+              {i:"💡",t:"Equivalência em 'litros'",tx:`Dolphin equivale a ~${(gasPrice/dKm).toFixed(0)} km/l de gasolina`,c:"#facc15"},
+            ].map((it,i)=>(
+              <div key={i} style={{background:"#111b30",borderRadius:10,padding:12,border:"1px solid #1a2744"}}>
+                <div style={{fontSize:12,color:it.c,fontWeight:700,marginBottom:3}}>{it.i} {it.t}</div>
+                <div style={{fontSize:12,color:"#6b7f9e"}}>{it.tx}</div>
+              </div>
+            ))}
+          </div>
+        </Sec>
+
+        {/* INSIGHTS */}
+        <Sec title="Análise e Insights" icon="🧠">
+          <div style={{fontSize:12,color:"#6b7f9e",lineHeight:1.9}}>
+            <div style={{background:"#0a1a12",borderRadius:10,padding:14,marginBottom:8,border:"1px solid #16a34a20"}}>
+              <b style={{color:"#4ade80"}}>✅ Vantagens do Dolphin:</b><br/>
+              • Economia operacional de ~{fmt(totalOpY)}/ano<br/>
+              • Custo por km {(cKm/dKm).toFixed(1)}x menor<br/>
+              • Bateria dura ~{Math.floor(291/dailyKm)} dias por carga<br/>
+              • Garantia 6 anos veículo / 8 anos bateria<br/>
+              • {fmt(irSY)}/ano de economia no IR do auxílio
+            </div>
+            <div style={{background:"#1a0a0a",borderRadius:10,padding:14,marginBottom:8,border:"1px solid #dc262620"}}>
+              <b style={{color:"#ff6b6b"}}>⚠️ Riscos e desvantagens:</b><br/>
+              • R$ 80k saindo do bolso (custo oportunidade ~{fmt(analysis[4].oc)} em 5 anos)<br/>
+              • Dolphin deprecia ~{fK(analysis[4].ddl)} vs ~{fK(analysis[4].cdl)} do Corolla em 5 anos<br/>
+              • Incerteza de revenda de EVs no Brasil<br/>
+              • Corolla 2008 é ativo estável (quase não perde valor)<br/>
+              • Seguro do Dolphin tende a ser mais caro
+            </div>
+            <div style={{background:"#0c1e3d",borderRadius:10,padding:14,border:"1px solid #1e40af20"}}>
+              <b style={{color:"#7dd3fc"}}>💡 Cenários que melhoram o resultado:</b><br/>
+              • Rodar mais km/dia (mais economia operacional)<br/>
+              • Gasolina subir de preço<br/>
+              • Dolphin depreciar menos que o estimado<br/>
+              • CDI/investimentos caírem (menor custo de oportunidade)
+            </div>
+          </div>
+        </Sec>
+
+        {/* PREMISSAS */}
+        <Sec title="Premissas e Notas" icon="📝">
+          <div style={{fontSize:10,color:"#3d5278",lineHeight:2}}>
+            • Corolla SEG 2008: IPVA isento, valor estimado venda R$50k<br/>
+            • Dolphin GS seminovo: alvo R$130k<br/>
+            • Depreciação Corolla: ~2%/ano | Dolphin: 10%→5% a.a.<br/>
+            • Manutenção Corolla: ~R$3.500/ano | Dolphin: ~R$1.200/ano<br/>
+            • CDI líquido: {cdiNet}% a.a. (após dedução de IR)<br/>
+            • Não inclui: seguro auto, pneus, instalação de wallbox<br/>
+            • Fonte: ANP (gasolina), ANEEL (energia), FIPE • Fev/2026
+          </div>
+        </Sec>
+
+        <div style={{textAlign:"center",fontSize:10,color:"#1a2744",paddingBottom:20}}>
+          Comparativo personalizado • Fev/2026
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
